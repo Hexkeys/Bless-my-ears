@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dual Channel Sound Editor</title>
+<style>
+  :root{
+    --bg:#14161c; --panel:#1d2029; --panel2:#252936; --line:#323849; --text:#e6e9f2; --muted:#8b93a8;
+    --left:#4da3ff; --right:#ff9f43; --accent:#6c7cff; --danger:#ff5d6c; --ok:#3ddc97;
+    --label:120px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column;user-select:none}
+  header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+  h1{font-size:16px;margin:0 12px 0 0;letter-spacing:.3px}
+  button,label.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit;display:inline-flex;align-items:center;gap:6px}
+  button:hover,label.btn:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.danger:hover{border-color:var(--danger);color:var(--danger)}
+  .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+  .time{font:600 18px ui-monospace,Consolas,monospace;min-width:112px;text-align:center;background:#0e1015;padding:4px 10px;border-radius:8px;border:1px solid var(--line)}
+  input[type=range]{accent-color:var(--accent)}
+  .zoom{display:flex;align-items:center;gap:6px;color:var(--muted)}
+  main{flex:1;display:flex;min-height:0}
+  aside{width:230px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  aside h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0;padding:12px 12px 6px}
+  #library{flex:1;overflow:auto;padding:0 10px 10px}
+  .lib{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;cursor:grab}
+  .lib .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lib .d{color:var(--muted);font-size:12px;margin-bottom:6px}
+  .lib .b{display:flex;gap:4px}
+  .lib .b button{padding:3px 8px;font-size:12px;flex:1}
+  .empty{color:var(--muted);padding:10px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+  #inspector{border-top:1px solid var(--line);padding:10px 12px;font-size:13px}
+  #inspector .row{display:flex;align-items:center;gap:8px;margin-top:6px}
+  #inspector input[type=range]{flex:1}
+  #stage{flex:1;display:flex;flex-direction:column;min-width:0}
+  #scroll{flex:1;overflow:auto;position:relative}
+  #inner{position:relative;min-height:100%}
+  #ruler{height:28px;position:sticky;top:0;z-index:6;background:var(--panel);border-bottom:1px solid var(--line);cursor:pointer}
+  #ruler .tick{position:absolute;top:0;height:100%;border-left:1px solid var(--line);padding-left:4px;font-size:11px;color:var(--muted);padding-top:6px}
+  #rulerLabel{position:sticky;left:0;width:var(--label);height:100%;background:var(--panel);z-index:3;border-right:1px solid var(--line);position:absolute;top:0}
+  .track{display:flex;height:150px;border-bottom:1px solid var(--line);position:relative}
+  .tlabel{position:sticky;left:0;z-index:5;width:var(--label);flex:none;background:var(--panel);border-right:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:8px}
+  .tlabel .name{font-weight:700;font-size:15px}
+  .tlabel.L .name{color:var(--left)} .tlabel.R .name{color:var(--right)}
+  .tlabel small{color:var(--muted)}
+  .tlabel input[type=range]{width:100%}
+  .tlabel .mute{padding:3px 8px;font-size:12px}
+  .tlabel .btns{display:flex;gap:4px}
+  .tlabel .btns .btn,.tlabel .btns button{padding:3px 6px;font-size:12px;flex:1;justify-content:center}
+  .tlabel .up{border-color:var(--accent)}
+  .tlabel .mute.on{background:var(--danger);border-color:var(--danger)}
+  .lane{position:relative;flex:none;background:
+      repeating-linear-gradient(90deg,transparent 0 99px,rgba(255,255,255,.03) 99px 100px),#171a22}
+  .lane.over{outline:2px dashed var(--accent);outline-offset:-3px}
+  .lane::after{content:"";position:absolute;left:0;right:0;top:50%;border-top:1px solid rgba(255,255,255,.06);pointer-events:none}
+  .clip{position:absolute;top:8px;bottom:8px;border-radius:8px;overflow:hidden;border:2px solid;cursor:grab;background:rgba(255,255,255,.04)}
+  .clip.L{border-color:var(--left);background:rgba(77,163,255,.14)}
+  .clip.R{border-color:var(--right);background:rgba(255,159,67,.14)}
+  .clip.sel{box-shadow:0 0 0 2px #fff}
+  .clip .h{position:absolute;top:0;bottom:0;width:9px;cursor:ew-resize;background:rgba(255,255,255,.22);z-index:2}
+  .clip .h:hover{background:rgba(255,255,255,.55)}
+  .clip .h.l{left:0;border-right:1px solid rgba(255,255,255,.6)}
+  .clip .h.r{right:0;border-left:1px solid rgba(255,255,255,.6)}
+  .clip canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .clip .cn{position:absolute;left:6px;top:3px;font-size:11px;font-weight:600;text-shadow:0 1px 2px #000;pointer-events:none;white-space:nowrap}
+  #playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:7;pointer-events:none}
+  #playhead::before{content:"";position:absolute;top:0;left:-6px;border:7px solid transparent;border-top-color:var(--danger)}
+  footer{display:flex;gap:18px;align-items:center;padding:8px 14px;background:var(--panel);border-top:1px solid var(--line)}
+  .meter{display:flex;align-items:center;gap:8px;flex:1;max-width:340px}
+  .meter b{width:14px}
+  .bar{flex:1;height:10px;background:#0e1015;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),#ffd166 75%,var(--danger))}
+  #status{color:var(--muted);margin-left:auto;font-size:12px}
+  #dropmsg{position:fixed;inset:0;background:rgba(108,124,255,.25);border:3px dashed var(--accent);display:none;align-items:center;justify-content:center;font-size:28px;font-weight:700;z-index:50;pointer-events:none}
+  @media(max-width:760px){aside{width:160px}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎚️ Dual Channel Sound Editor</h1>
+  <label class="btn primary" title="Upload audio files">⬆ Upload Sound
+    <input id="file" type="file" accept="audio/*" multiple hidden>
+  </label>
+  <div class="sep"></div>
+  <button id="play" class="primary">▶ Play Preview</button>
+  <button id="pause">⏸ Pause</button>
+  <button id="stop">⏹ Stop</button>
+  <div class="time" id="time">00:00.00</div>
+  <button id="loop" title="Loop playback">🔁 Loop: off</button>
+  <div class="sep"></div>
+  <button id="split" title="Split selected clip at playhead (S)">✂ Split</button>
+  <button id="dup" title="Duplicate selected clip (D)">⧉ Duplicate</button>
+  <button id="del" class="danger" title="Delete selected clip (Delete)">🗑 Delete</button>
+  <div class="sep"></div>
+  <div class="zoom">🔍 <input id="zoom" type="range" min="10" max="400" value="80"></div>
+  <button id="export">💾 Export WAV</button>
+</header>
+
+<main>
+  <aside>
+    <h2>Sound Library</h2>
+    <div id="library"><div class="empty">Upload or drop audio files here</div></div>
+    <div id="inspector">
+      <div id="insName" style="color:var(--muted)">No clip selected</div>
+      <div class="row"><span>Vol</span><input id="clipVol" type="range" min="0" max="200" value="100" disabled><span id="clipVolV">100%</span></div>
+    </div>
+  </aside>
+
+  <div id="stage">
+    <div id="scroll">
+      <div id="inner">
+        <div id="ruler"><div id="rulerLabel"></div></div>
+        <div class="track" data-i="0">
+          <div class="tlabel L">
+            <div class="name">LEFT 🔈</div><small>Left speaker</small>
+            <input type="range" class="tvol" min="0" max="150" value="100" title="Track volume">
+            <div class="btns"><button class="mute">Mute</button>
+              <label class="btn up" title="Upload MP3 / audio to this timeline">⬆ MP3<input class="tup" type="file" accept=".mp3,audio/mpeg,audio/*" multiple hidden></label></div>
+          </div>
+          <div class="lane"></div>
+        </div>
+        <div class="track" data-i="1">
+          <div class="tlabel R">
+            <div class="name">RIGHT 🔈</div><small>Right speaker</small>
+            <input type="range" class="tvol" min="0" max="150" value="100" title="Track volume">
+            <div class="btns"><button class="mute">Mute</button>
+              <label class="btn up" title="Upload MP3 / audio to this timeline">⬆ MP3<input class="tup" type="file" accept=".mp3,audio/mpeg,audio/*" multiple hidden></label></div>
+          </div>
+          <div class="lane"></div>
+        </div>
+        <div id="playhead"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="meter"><b style="color:var(--left)">L</b><div class="bar"><i id="mL"></i></div></div>
+  <div class="meter"><b style="color:var(--right)">R</b><div class="bar"><i id="mR"></i></div></div>
+  <div id="status">Upload a sound, add it to a timeline, then drag a clip's edges to shorten it.</div>
+</footer>
+<div id="dropmsg">Drop audio files to upload</div>
+
+<script>
+(() => {
+  const LABEL = 120;
+  const $ = s => document.querySelector(s);
+  const status = t => $('#status').textContent = t;
+
+  // ---------- state ----------
+  let pps = 80;                       // pixels per second
+  let playPos = 0;                    // seconds
+  let uid = 1;
+  let selected = null;
+  let looping = false;
+  const library = [];                 // {id,name,buf}
+  const tracks = [
+    {ch:0, vol:1, mute:false, clips:[]},
+    {ch:1, vol:1, mute:false, clips:[]},
+  ];
+
+  // ---------- audio engine ----------
+  let ctx, master, merger, anL, anR;
+  function ensureCtx(){
+    if(!ctx){
+      ctx = new (window.AudioContext||window.webkitAudioContext)();
+      master = ctx.createGain();
+      merger = ctx.createChannelMerger(2);
+      merger.connect(master);
+      master.connect(ctx.destination);
+      const split = ctx.createChannelSplitter(2);
+      master.connect(split);
+      anL = ctx.createAnalyser(); anR = ctx.createAnalyser();
+      anL.fftSize = anR.fftSize = 512;
+      split.connect(anL,0); split.connect(anR,1);
+    }
+    if(ctx.state==='suspended') ctx.resume();
+    return ctx;
+  }
+
+  let sources = [], playing = false, paused = false, baseCtxTime = 0, startPos = 0, raf = 0;
+
+  function totalDuration(){
+    let d = 0;
+    tracks.forEach(t=>t.clips.forEach(c=>d=Math.max(d,c.start+c.dur)));
+    return d;
+  }
+
+  // Builds the graph into any context/destination (used for live and offline render)
+  function schedule(c, mergerNode, from, when){
+    const out = [];
+    tracks.forEach(t=>{
+      if(t.mute) return;
+      t.clips.forEach(clip=>{
+        const end = clip.start+clip.dur;
+        if(end <= from) return;
+        const skip = Math.max(0, from-clip.start);
+        const delay = Math.max(0, clip.start-from);
+        const src = c.createBufferSource();
+        src.buffer = clip.buf;
+        const g = c.createGain();
+        g.gain.value = t.vol*clip.gain;
+        src.connect(g);
+        // mono feed into ONE merger input => only that speaker plays this timeline
+        g.connect(mergerNode, 0, t.ch);
+        src.start(when+delay, clip.offset+skip, clip.dur-skip);
+        out.push(src);
+      });
+    });
+    return out;
+  }
+
+  function play(){
+    ensureCtx();
+    if(playing) return;
+    if(!totalDuration()){ status('Nothing to play yet — add a sound to a timeline.'); return; }
+    if(playPos >= totalDuration()) playPos = 0;
+    startPos = playPos;
+    baseCtxTime = ctx.currentTime + 0.05;
+    sources = schedule(ctx, merger, startPos, baseCtxTime);
+    playing = true; paused = false;
+    status('Playing both timelines (L + R)…');
+    tick();
+  }
+  function killSources(){
+    sources.forEach(s=>{ try{s.onended=null; s.stop();}catch(e){} try{s.disconnect();}catch(e){} });
+    sources = [];
+  }
+  function pause(){
+    if(!playing) return;
+    playPos = currentPos();
+    playing = false; paused = true;
+    killSources(); cancelAnimationFrame(raf);
+    updateHead(); status('Paused.');
+  }
+  function stop(){
+    playing = false; paused = false;
+    killSources(); cancelAnimationFrame(raf);
+    playPos = 0; updateHead();
+    $('#mL').style.width = $('#mR').style.width = '0';
+    status('Stopped.');
+  }
+  function currentPos(){ return Math.max(startPos, startPos + (ctx.currentTime - baseCtxTime)); }
+
+  const bufL = new Uint8Array(512), bufR = new Uint8Array(512);
+  function level(an, buf){
+    an.getByteTimeDomainData(buf);
+    let m = 0; for(let i=0;i<buf.length;i++) m = Math.max(m, Math.abs(buf[i]-128));
+    return Math.min(1, m/128*1.4);
+  }
+  function tick(){
+    if(!playing) return;
+    playPos = currentPos();
+    if(playPos >= totalDuration()){
+      killSources(); playing = false;
+      if(looping){ playPos = 0; play(); return; }
+      playPos = 0; updateHead(); status('Finished.');
+      $('#mL').style.width = $('#mR').style.width = '0';
+      return;
+    }
+    updateHead(true);
+    $('#mL').style.width = level(anL,bufL)*100+'%';
+    $('#mR').style.width = level(anR,bufR)*100+'%';
+    raf = requestAnimationFrame(tick);
+  }
+  function seek(t){
+    t = Math.max(0,t);
+    const was = playing;
+    if(playing){ playing=false; killSources(); cancelAnimationFrame(raf); }
+    playPos = t; updateHead();
+    if(was) play();
+  }
+
+  // ---------- upload ----------
+  async function loadFile(file){
+    try{
+      ensureCtx();
+      status('Decoding '+file.name+'…');
+      const ab = await file.arrayBuffer();
+      const buf = await ctx.decodeAudioData(ab);
+      const item = {id:uid++, name:file.name.replace(/\.[^.]+$/,''), buf};
+      library.push(item); renderLibrary();
+      status('Loaded "'+item.name+'" ('+buf.duration.toFixed(1)+'s). Add it to Left, Right or Both.');
+      return item;
+    }catch(e){
+      status('Could not decode "'+file.name+'" — unsupported audio file.');
+      return null;
+    }
+  }
+  $('#file').addEventListener('change', async e=>{
+    for(const f of e.target.files) await loadFile(f);
+    e.target.value = '';
+  });
+
+  function addClip(item, trackIdx, start){
+    const clip = {id:uid++, name:item.name, buf:item.buf, start:Math.max(0,start), offset:0, dur:item.buf.duration, gain:1};
+    tracks[trackIdx].clips.push(clip);
+    selected = clip;
+    return clip;
+  }
+
+  // ---------- library UI ----------
+  function renderLibrary(){
+    const el = $('#library');
+    if(!library.length){ el.innerHTML = '<div class="empty">Upload or drop audio files here</div>'; return; }
+    el.innerHTML = '';
+    library.forEach(item=>{
+      const d = document.createElement('div');
+      d.className = 'lib'; d.draggable = true;
+      d.innerHTML = `<div class="n"></div><div class="d">${item.buf.duration.toFixed(2)}s · ${item.buf.numberOfChannels}ch · ${item.buf.sampleRate}Hz</div>
+        <div class="b"><button data-t="0" style="color:var(--left)">+ Left</button><button data-t="1" style="color:var(--right)">+ Right</button><button data-t="2">+ Both</button></div>`;
+      d.querySelector('.n').textContent = item.name;
+      d.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/lib', item.id); e.dataTransfer.effectAllowed='copy'; });
+      d.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>{
+        const t = +b.dataset.t;
+        if(t===2){ addClip(item,0,playPos); addClip(item,1,playPos); }
+        else addClip(item,t,playPos);
+        render(); status('Added "'+item.name+'" at '+fmt(playPos)+'.');
+      }));
+      el.appendChild(d);
+    });
+  }
+
+  // ---------- timeline rendering ----------
+  const lanes = [...document.querySelectorAll('.lane')];
+  function fmt(t){
+    const m = Math.floor(t/60), s = t%60;
+    return String(m).padStart(2,'0')+':'+s.toFixed(2).padStart(5,'0');
+  }
+  function drawWave(canvas, clip, w, h, color){
+    canvas.width = Math.max(1, Math.min(w, 16000)); canvas.height = h;
+    const g = canvas.getContext('2d');
+    g.clearRect(0,0,canvas.width,h);
+    g.fillStyle = color;
+    const buf = clip.buf, sr = buf.sampleRate, n = buf.numberOfChannels;
+    const chans = []; for(let i=0;i<n;i++) chans.push(buf.getChannelData(i));
+    const total = canvas.width;
+    const mid = h/2;
+    for(let x=0;x<total;x++){
+      const s0 = Math.floor((clip.offset + x/total*clip.dur)*sr);
+      const s1 = Math.floor((clip.offset + (x+1)/total*clip.dur)*sr);
+      const step = Math.max(1, Math.floor((s1-s0)/24));
+      let mn=0, mx=0;
+      for(let s=s0;s<s1;s+=step){
+        for(let c=0;c<n;c++){ const v = chans[c][s]||0; if(v<mn)mn=v; if(v>mx)mx=v; }
+      }
+      const gain = Math.min(2, clip.gain);
+      const y1 = mid - Math.min(1,mx*gain)*mid*0.92;
+      const y2 = mid - Math.min(1,mn*gain)*mid*0.92;
+      g.fillRect(x, y1, 1, Math.max(1,y2-y1));
+    }
+  }
+
+  function render(){
+    const dur = Math.max(30, totalDuration()+10);
+    const width = dur*pps;
+    $('#inner').style.width = (LABEL+width)+'px';
+    lanes.forEach(l=>{ l.style.width = width+'px'; });
+
+    // ruler
+    const ruler = $('#ruler');
+    ruler.querySelectorAll('.tick').forEach(t=>t.remove());
+    const step = pps>=200?0.5 : pps>=80?1 : pps>=40?2 : pps>=20?5 : 10;
+    for(let t=0;t<=dur;t+=step){
+      const d = document.createElement('div');
+      d.className='tick'; d.style.left=(LABEL+t*pps)+'px';
+      d.textContent = t%60===0 && t? (t/60)+'m' : (t%60)+'s';
+      ruler.appendChild(d);
+    }
+
+    lanes.forEach((lane,i)=>{
+      lane.innerHTML='';
+      const cls = i===0?'L':'R';
+      const color = i===0?'#4da3ff':'#ff9f43';
+      tracks[i].clips.forEach(clip=>{
+        const el = document.createElement('div');
+        el.className = 'clip '+cls+(clip===selected?' sel':'');
+        el.style.left = (clip.start*pps)+'px';
+        el.style.width = Math.max(4,clip.dur*pps)+'px';
+        const cv = document.createElement('canvas');
+        const nm = document.createElement('div'); nm.className='cn'; nm.textContent = clip.name;
+        const hl = document.createElement('div'); hl.className='h l'; hl.title='Drag to shorten from the start';
+        const hr = document.createElement('div'); hr.className='h r'; hr.title='Drag to shorten from the end';
+        el.append(cv,nm,hl,hr);
+        hl.addEventListener('mousedown', e=>startTrim(e,el,clip,'l'));
+        hr.addEventListener('mousedown', e=>startTrim(e,el,clip,'r'));
+        lane.appendChild(el);
+        drawWave(cv, clip, Math.round(clip.dur*pps), 134, color);
+        el._clip = clip;
+        el.addEventListener('mousedown', e=>startDrag(e,el,clip,i));
+      });
+    });
+    updateInspector();
+    updateHead();
+  }
+
+  function updateHead(follow){
+    const x = LABEL + playPos*pps;
+    $('#playhead').style.left = x+'px';
+    $('#time').textContent = fmt(playPos);
+    if(follow){
+      const sc = $('#scroll');
+      if(x > sc.scrollLeft + sc.clientWidth - 60) sc.scrollLeft = x - LABEL - 40;
+    }
+  }
+
+  // ---------- interaction ----------
+  $('#ruler').addEventListener('mousedown', e=>{
+    const move = ev=>{
+      const r = $('#inner').getBoundingClientRect();
+      seek((ev.clientX - r.left - LABEL)/pps);
+    };
+    move(e);
+    const up = ()=>{ removeEventListener('mousemove',move); removeEventListener('mouseup',up); };
+    addEventListener('mousemove',move); addEventListener('mouseup',up);
+  });
+
+  // click empty lane: deselect & move playhead
+  lanes.forEach(lane=>{
+    lane.addEventListener('mousedown', e=>{
+      if(e.target!==lane) return;
+      selected = null;
+      const r = lane.getBoundingClientRect();
+      seek((e.clientX-r.left)/pps);
+      render();
+    });
+  });
+
+  function startDrag(e, el, clip, fromTrack){
+    e.stopPropagation();
+    selected = clip;
+    document.querySelectorAll('.clip.sel').forEach(c=>c.classList.remove('sel'));
+    el.classList.add('sel'); updateInspector();
+    const laneRect = lanes[fromTrack].getBoundingClientRect();
+    const grab = (e.clientX - laneRect.left)/pps - clip.start;
+    let cur = fromTrack, moved = false;
+    const move = ev=>{
+      moved = true;
+      const lr = lanes[cur].getBoundingClientRect();
+      clip.start = Math.max(0, (ev.clientX - lr.left)/pps - grab);
+      // vertical: switch track
+      const ti = lanes.findIndex(l=>{ const r=l.getBoundingClientRect(); return ev.clientY>=r.top && ev.clientY<r.bottom; });
+      if(ti>=0 && ti!==cur){
+        tracks[cur].clips.splice(tracks[cur].clips.indexOf(clip),1);
+        tracks[ti].clips.push(clip);
+        cur = ti;
+        lanes[ti].appendChild(el);
+        el.classList.remove('L','R'); el.classList.add(ti===0?'L':'R');
+        const lr2 = lanes[cur].getBoundingClientRect();
+        clip.start = Math.max(0,(ev.clientX-lr2.left)/pps-grab);
+      }
+      el.style.left = (clip.start*pps)+'px';
+    };
+    const up = ()=>{
+      removeEventListener('mousemove',move); removeEventListener('mouseup',up);
+      if(moved){ if(playing) seek(currentPos()); render(); }
+    };
+    addEventListener('mousemove',move); addEventListener('mouseup',up);
+  }
+
+  // shorten a clip by dragging its left or right edge
+  function startTrim(e, el, clip, side){
+    e.stopPropagation(); e.preventDefault();
+    selected = clip;
+    const x0 = e.clientX;
+    const s0 = clip.start, o0 = clip.offset, d0 = clip.dur;
+    const MIN = 0.05;
+    const move = ev=>{
+      const dt = (ev.clientX - x0)/pps;
+      if(side==='r'){
+        clip.dur = Math.min(clip.buf.duration - clip.offset, Math.max(MIN, d0 + dt));
+      }else{
+        // can't pull the start earlier than the start of the file, or past the end
+        let d = Math.max(-o0, Math.min(d0 - MIN, dt));
+        if(s0 + d < 0) d = -s0;
+        clip.start = s0 + d; clip.offset = o0 + d; clip.dur = d0 - d;
+      }
+      el.style.left = (clip.start*pps)+'px';
+      el.style.width = Math.max(4,clip.dur*pps)+'px';
+      status('Clip length: '+clip.dur.toFixed(2)+'s');
+    };
+    const up = ()=>{
+      removeEventListener('mousemove',move); removeEventListener('mouseup',up);
+      if(playing) seek(currentPos());
+      render();
+    };
+    addEventListener('mousemove',move); addEventListener('mouseup',up);
+  }
+
+  // drag & drop onto lanes (library items or files)
+  lanes.forEach((lane,i)=>{
+    lane.addEventListener('dragover', e=>{ e.preventDefault(); lane.classList.add('over'); });
+    lane.addEventListener('dragleave', ()=>lane.classList.remove('over'));
+    lane.addEventListener('drop', async e=>{
+      e.preventDefault(); e.stopPropagation(); lane.classList.remove('over'); hideDrop();
+      const x = (e.clientX - lane.getBoundingClientRect().left)/pps;
+      const id = e.dataTransfer.getData('text/lib');
+      if(id){
+        const item = library.find(l=>l.id==id);
+        if(item){ addClip(item,i,x); render(); }
+        return;
+      }
+      let pos = x;
+      for(const f of e.dataTransfer.files){
+        const item = await loadFile(f);
+        if(item){ addClip(item,i,pos); pos += item.buf.duration; }
+      }
+      render();
+    });
+  });
+
+  // whole-window file drop
+  let dragDepth = 0;
+  function hideDrop(){ dragDepth=0; $('#dropmsg').style.display='none'; }
+  addEventListener('dragenter', e=>{ if([...e.dataTransfer.types].includes('Files')){ dragDepth++; $('#dropmsg').style.display='flex'; }});
+  addEventListener('dragleave', ()=>{ dragDepth=Math.max(0,dragDepth-1); if(!dragDepth) hideDrop(); });
+  addEventListener('dragover', e=>e.preventDefault());
+  addEventListener('drop', async e=>{
+    e.preventDefault(); hideDrop();
+    for(const f of e.dataTransfer.files) await loadFile(f);
+  });
+
+  // ---------- toolbar ----------
+  $('#play').onclick = play;
+  $('#pause').onclick = pause;
+  $('#stop').onclick = stop;
+  $('#loop').onclick = ()=>{ looping=!looping; $('#loop').textContent = '🔁 Loop: '+(looping?'on':'off'); };
+  $('#zoom').oninput = e=>{
+    const sc = $('#scroll');
+    const centerT = (sc.scrollLeft + sc.clientWidth/2 - LABEL)/pps;
+    pps = +e.target.value; render();
+    sc.scrollLeft = centerT*pps - sc.clientWidth/2 + LABEL;
+  };
+
+  function trackOf(clip){ return tracks.findIndex(t=>t.clips.includes(clip)); }
+
+  function splitSel(){
+    if(!selected) return status('Select a clip first.');
+    const clip = selected, t = playPos;
+    if(t<=clip.start+0.01 || t>=clip.start+clip.dur-0.01) return status('Move the playhead inside the clip to split.');
+    const cut = t-clip.start;
+    const b = {...clip, id:uid++, start:t, offset:clip.offset+cut, dur:clip.dur-cut};
+    clip.dur = cut;
+    tracks[trackOf(clip)].clips.push(b);
+    selected = b; render(); status('Split at '+fmt(t)+'.');
+  }
+  function delSel(){
+    if(!selected) return;
+    const ti = trackOf(selected);
+    tracks[ti].clips.splice(tracks[ti].clips.indexOf(selected),1);
+    selected = null; if(playing) seek(currentPos()); render();
+  }
+  function dupSel(){
+    if(!selected) return;
+    const ti = trackOf(selected);
+    const c = {...selected, id:uid++, start:selected.start+selected.dur};
+    tracks[ti].clips.push(c); selected = c; render();
+  }
+  $('#split').onclick = splitSel;
+  $('#del').onclick = delSel;
+  $('#dup').onclick = dupSel;
+
+  document.querySelectorAll('.track').forEach(tr=>{
+    const t = tracks[+tr.dataset.i];
+    tr.querySelector('.tvol').oninput = e=>{ t.vol = e.target.value/100; if(playing) seek(currentPos()); };
+    tr.querySelector('.tup').addEventListener('change', async e=>{
+      const idx = +tr.dataset.i;
+      let pos = playPos;
+      for(const f of e.target.files){
+        const item = await loadFile(f);
+        if(item){ addClip(item, idx, pos); pos += item.buf.duration; render(); }
+      }
+      if(e.target.files.length) status('Added to the '+(idx===0?'LEFT':'RIGHT')+' timeline.');
+      e.target.value = '';
+    });
+    const mb = tr.querySelector('.mute');
+    mb.onclick = ()=>{ t.mute=!t.mute; mb.classList.toggle('on',t.mute); mb.textContent = t.mute?'Muted':'Mute'; if(playing) seek(currentPos()); };
+  });
+
+  function updateInspector(){
+    const v = $('#clipVol');
+    if(!selected){ $('#insName').textContent='No clip selected'; v.disabled=true; return; }
+    $('#insName').innerHTML = '<b></b> <span style="color:var(--muted)">on '+(trackOf(selected)===0?'Left':'Right')+'</span>';
+    $('#insName b').textContent = selected.name;
+    v.disabled = false; v.value = Math.round(selected.gain*100); $('#clipVolV').textContent = v.value+'%';
+  }
+  $('#clipVol').oninput = e=>{
+    if(!selected) return;
+    selected.gain = e.target.value/100; $('#clipVolV').textContent = e.target.value+'%';
+  };
+  $('#clipVol').onchange = ()=>{ render(); if(playing) seek(currentPos()); };
+
+  addEventListener('keydown', e=>{
+    if(e.target.tagName==='INPUT') return;
+    if(e.code==='Space'){ e.preventDefault(); playing?pause():play(); }
+    else if(e.key==='Delete'||e.key==='Backspace') delSel();
+    else if(e.key==='s'||e.key==='S') splitSel();
+    else if(e.key==='d'||e.key==='D') dupSel();
+  });
+
+  // ---------- export ----------
+  $('#export').onclick = async ()=>{
+    const dur = totalDuration();
+    if(!dur) return status('Nothing to export.');
+    status('Rendering…');
+    const sr = 44100;
+    const oc = new OfflineAudioContext(2, Math.ceil(dur*sr)+sr/10, sr);
+    const m = oc.createChannelMerger(2); m.connect(oc.destination);
+    schedule(oc, m, 0, 0);
+    const out = await oc.startRendering();
+    const L = out.getChannelData(0), R = out.getChannelData(1);
+    const len = L.length, ab = new ArrayBuffer(44+len*4), v = new DataView(ab);
+    const ws = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+    ws(0,'RIFF'); v.setUint32(4,36+len*4,true); ws(8,'WAVEfmt ');
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,2,true);
+    v.setUint32(24,sr,true); v.setUint32(28,sr*4,true); v.setUint16(32,4,true); v.setUint16(34,16,true);
+    ws(36,'data'); v.setUint32(40,len*4,true);
+    let o = 44;
+    const cl = x=>Math.max(-1,Math.min(1,x));
+    for(let i=0;i<len;i++){
+      v.setInt16(o, cl(L[i])*0x7fff, true); o+=2;
+      v.setInt16(o, cl(R[i])*0x7fff, true); o+=2;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([ab],{type:'audio/wav'}));
+    a.download = 'mix.wav'; a.click();
+    status('Exported mix.wav');
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
